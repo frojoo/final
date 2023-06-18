@@ -29,45 +29,49 @@ contract StuentRecord {
     struct Student {
         string name;
         uint number;
-        mapping(string => uint) subjectScore;
+        uint[5] subjectScore;
         uint prize;
         uint volunteer;
         uint book;
     }
-    // ******과목 별 점수를 점수 하나씩 나오게 해야되나, 아니면 과목별 점수를 한꺼번에 보여줘야 되나******
 
     mapping(address => Student) students;
 
     //학생 정보 기입
-    function setStuent(address _addr, string memory _name, uint _number, uint _prize, uint _volunteer, uint _book) public {
-        students[_addr].name = _name;
-        students[_addr].number = _number;
-        students[_addr].prize = _prize;
-        students[_addr].volunteer = _volunteer;
-        students[_addr].book = _book;
-
-        
+    function setStudent(address _addr, string memory _name, uint _number, uint[5] memory _score, uint _prize, uint _volunteer, uint _book) public {
+        students[_addr] = Student(_name, _number, _score, _prize, _volunteer, _book);
     }
 
     // 과목별 점수 설정
-    function setSubjectsScore(address _addr, uint _korean, uint _math, uint _science, uint _social, uint _english) public {
-        Student storage student = students[_addr];
-        student.subjectScore["Korean Language"] = _korean;
-        student.subjectScore["Math"] = _math;
-        student.subjectScore["Science"] = _science;
-        student.subjectScore["Social Studys"] = _social;
-        student.subjectScore["English"] = _english;
+    function setScore(address _addr, uint _n, uint _score) public {
+        students[_addr].subjectScore[_n] = _score;
     }
 
-    // 과목별 점수 보기
-    function getSubjectsScore(address _addr, string memory _subject) public view returns(uint) {
-        return (students[_addr].subjectScore[_subject]);
+    // 상 개수 설정
+    function setPrize(address _addr, uint _prize) public {
+        students[_addr].prize = _prize;
+    }
+
+    // 봉사활동 개수 설정
+    function setVolunteer(address _addr, uint _volunteer) public {
+        students[_addr].volunteer = _volunteer;
+    }
+
+    // 독서 개수 설정
+    function setBook(address _addr, uint _book) public {
+        students[_addr].book = _book;
+    }
+
+    // 과목 점수 보기
+    function getSubjectsScore(address _addr) public view returns(uint[5] memory) {
+        return students[_addr].subjectScore;
     }
 
     // 학생 정보 보기
-    function getStudent(address _addr, string memory _subject) public view returns(string memory, uint, uint, uint, uint, uint) {
-        return (students[_addr].name, students[_addr].number, getSubjectsScore(_addr, _subject), students[_addr].prize, students[_addr].volunteer, students[_addr].book);
+    function getStudent(address _addr) public view returns(Student memory) {
+        return students[_addr];
     }
+
 }
 
 // 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2

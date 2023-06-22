@@ -20,24 +20,22 @@ pragma solidity ^0.8.18;
 이중매핑으로 msg.sender로 학생과 선생님을 구분할 수 있는지?
 선생님이 학생들이 신청한 목표들을 모아서 볼 수 있게 하려면 무조건 배열로 짜야하는지
 메타데이터를 임의로 작성해서 할 수 있다고 하면 어떻게 함수 짜야하는지
-
 */
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 contract StudentRecord is ERC721{
-    address teacher;
 
     constructor() ERC721("Badge", "B") {
     }
 
     struct Goal {
         address studentsAccount;
+        address teachersAccount;
         string subjects;
         string detailGoal;
         uint startDate;
         uint endDate;
-        status goalRequestStatus;
         status mintRequestStatus;
         string url;
     }
@@ -45,91 +43,80 @@ contract StudentRecord is ERC721{
     enum status {
         yet,
         proceeding,
-        approved,
-        rejected
+        approved
     }
 
-    mapping (address => bool) teacherAuthority;  // 보류
+    mapping (address => bool) isTeacher;
+    mapping(uint => address) teachers;
 
-    // msg.sender로 학생과 선생님을 구분할 수 있는지 이걸로(학생과 선생님 모두 같은 자료를 보고 권한만 따로 부여하는 법)
-    mapping(uint => mapping(address => Goal)) goals;
+    // 선생님이 맞다면 true로 설정 - 이걸 classTeacher함수 안에 넣어도 되는가가?
+    function setTeacherAuthority() public {
+        isTeacher[msg.sender] = true;
+    }
+
+    //선생님이 맞는지 확인(삭제)
+    function getTeacherAuthority() public view returns(bool) {
+        return isTeacher[msg.sender];
+    }
+
+    //몇 반 선생님인지 설정 - 각 반마다 선생님의 주소를 넣어주기(우선 선생님이 맞는지 확인)
+    function classTeacher(uint _classNumber) public {
+        require(isTeacher[msg.sender] == true, "not a teacher");
+        require(_classNumber > 0,"bigger than zero");
+        require(teachers[_classNumber] == address(0), "already existed class teacher"); // 이 기능이 필요할까
+        teachers[_classNumber] = msg.sender;
+    }
+
+    // 각 반의 선생님의 주소 확인(삭제)
+    function getClassTeacher(uint _classNumber) public view returns(address) {
+        return teachers[_classNumber];
+    }
+
+    mapping(address => Goal[]) studentsGoals;
+    Goal[] allGoals;
     uint contentsNumber;
 
-    // 매핑으로 할지 어레이로 할지
-    Goal[] goalsArr;
-
-    modifier isProceeding() {
-        require(goals[contentsNumber][msg.sender].mintRequestStatus == status.proceeding, "Status is not proceeding");
-        _;
+    // 초기 목표 설정(어떤 과목, 세부 목표, 시작일, 종료일, 달성여부, 선생님 승인여부, 민팅 승인여부) - 학생이 실행
+    function setGoal(uint _classNumber, string memory _subject, string memory _detail, uint _start, uint _end) public {
+        require(bytes(_detail).length>0 && _start>0 && _end>0, "input value");
+        require( _start < _end, "End date has to be later");
+        require(teachers[_classNumber] != address(0), "there's no class teacher");
+        studentsGoals[msg.sender].push(Goal(msg.sender, teachers[_classNumber], _subject, _detail, _start, _end, status.yet, ""));
+        allGoals.push(Goal(msg.sender, teachers[_classNumber], _subject, _detail, _start, _end, status.yet,""));
     }
 
-    modifier onlyTeacher() {
-        require(teacherAuthority[msg.sender] == true);
-        _;
-    }
-
-    function setTeacherAuthority() public {
-        teacherAuthority[msg.sender] = true;
-    }
-
-    // 초기 목표 설정(어떤 과목, 세부 목표, 시작일, 종료일, 달성여부, 선생님 승인여부, 민팅 승인여부) - 학생권한
-    function setGoal(string memory _subject, string memory _detail, uint _start, uint _end) public {
-        // 현재 날짜를 받는 함수를 만들어서 그 이상으로 할까
-        require(bytes(_detail).length>0 && _start>0 && _end>0 && _start < _end, "input value");
-        contentsNumber++;
-        goals[contentsNumber][msg.sender] = Goal(msg.sender, _subject, _detail, _start, _end, status.proceeding, status.yet, "");
-        goalsArr.push(Goal(msg.sender, _subject, _detail, _start, _end, status.proceeding, status.yet,""));
-    }
+    // // 목표 수정(필요?)
+    // function modifyGoal(uint _contentsNumber, string memory _subject, string memory _detail, uint _start, uint _end) public {
+    //     require(bytes(_detail).length>0 && _start>0 && _end>0, "input value");
+    //     require( _start < _end, "End date has to be later");
+    //     studentsGoals[msg.sender][_contentsNumber] = Goal(msg.sender, _subject, _detail, _start, _end, status.yet, "");
+    //     allGoals[_contentsNumber] = Goal(msg.sender, _subject, _detail, _start, _end, status.yet, "");
+    // }
 
     // 학생이 본인이 설정한 목표 보기
-    function getGoal(uint _contentsNumber) external view returns(Goal memory) {
-        return goals[_contentsNumber][msg.sender];
+    function getGoal() external view returns(Goal[] memory) {
+        return studentsGoals[msg.sender];
     }
 
-    // 선생님이 학생들의 목표 전체 보기
+    // 선생님이 학생들의 목표 전체 보기(필요?)
     function allStudentsGoals() public view returns(Goal[] memory) {
-        return goalsArr;
-    }
-    
-    // 선생님이 목표를 등록한 학생들의 정보 보기
-    function requestedStudent(string memory _subject, string memory _detail, uint _start, uint _end) public view returns(Goal[] memory) {
-        // Goal[] memory requestedStudents = new Goal[](goalsArr.length);
-        // if(goals[contentsNumber][msg.sender].goalRequestStatus == status.proceeding) {
-        //     for(uint i=0; i<goalsArr.length; i++) {
-        //         requestedStudents[i] = Goal(msg.sender, _subject, _detail, _start, _end, status.proceeding, status.yet,"");
-        //     }
-        // }
-
-        // return requestedStudents;
-    }
-    
-
-    // 목표 설정에 대한 선생님의 승인 = 승인 여부 변경 - 선생님 권한
-    function approveGoal(uint _contentsNumber, address _studentAddr) public isProceeding onlyTeacher {
-        goals[_contentsNumber][_studentAddr].goalRequestStatus = status.approved;
+        return allGoals;
     }
 
-    // 목표 설정에 대한 선생님의 거절 = 승인 여부 변경 - 선생님 권한
-    function rejectGoal(uint _contentsNumber, address _studentAddr) public isProceeding onlyTeacher {
-        goals[_contentsNumber][_studentAddr].goalRequestStatus = status.rejected;
-    }
-
-    // 목표 달성 후 증빙서류 제출 및 발행 신청 - 학생 권한
+    // 목표 달성 후 증빙서류 제출 및 발행 신청 - 학생이
     // 피나타 주소 끌어와서 넣기
-    function submitNApply(uint _contentsNumber, string memory _url) public {
+    function submitNApply(string memory _url, uint tokenId, uint _contentsNumber) public {
         require(bytes(_url).length > 0, "input value");
-        goals[_contentsNumber][msg.sender].url = _url;
-        goals[_contentsNumber][msg.sender].mintRequestStatus = status.proceeding;
+        studentsGoals[msg.sender][_contentsNumber].url = _url;
+        studentsGoals[msg.sender][_contentsNumber].mintRequestStatus = status.proceeding;
+        _mint(msg.sender, tokenId);
     }
 
-    // 민팅 승인(민팅승인을 true로 변경, ERC721로 민팅하기) - 선생님 권한
-    function approveMinting(address _studentAddr, uint tokenId) public isProceeding onlyTeacher {
-        goals[contentsNumber][_studentAddr].mintRequestStatus = status.approved;
-        _mint(_studentAddr, tokenId);
-    }
-
-    // 민팅 거절(민팅을 거절, 반환) - 선생님 권한
-    function rejectMinting(uint _contentsNumber) public isProceeding onlyTeacher {
-        goals[_contentsNumber][msg.sender].mintRequestStatus = status.rejected;
+    // 민팅 승인(민팅승인을 approved로 변경) - 선생님 권한
+    function approveMinting(address _studentAddr, uint _contentsNumber, uint _classNumber) public {
+        require(msg.sender == teachers[_classNumber]);
+        require(studentsGoals[_studentAddr][_contentsNumber].mintRequestStatus == status.proceeding, "Status is not proceeding");
+        studentsGoals[_studentAddr][_contentsNumber].mintRequestStatus = status.approved;
     }
 }
+

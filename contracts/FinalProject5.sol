@@ -4,74 +4,99 @@ pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract NFT is ERC721Enumerable, Ownable {
+    string public before_URI;
+    string public after_URI;
 
-    constructor () ERC721("Badge", "B") {}
+    constructor (string memory b_uri, string memory a_uri) ERC721("Badge", "B") {
+        before_URI = b_uri;
+        after_URI = a_uri;
+    }
 
     struct Goal {
         address studentsAccount;
-        string subjects;
-        string detailGoal;
         uint startDate;
         uint endDate;
         string proveUrl;
     }
 
-    // 선생님인지 확인
+    // 선생님 여부 확인
     mapping(address => bool) public isTeacher;
-    // 토큰아이디를 발행해준 선생님
+    // 토큰아이디 발행 담당 선생님
     mapping(uint => address) public teachers;
-    // 발행 완료가 됐는지
+    // 목표 달성 여부
     mapping(uint => bool) public isAchieved;
+    // 증빙서류 제출 여부
+    mapping(uint => bool) public isSubmmited;
     //토큰아이디의 메타데이터
     mapping(uint => string) public metadataUris;
-    
-    // 학생의 목표들
-    mapping(address => Goal[]) public studentsGoals;
-    // 학생이 서류 제출한 토큰 아이디들
-    uint[] submmitedGoals;
-
-    // 초기 목표 설정(어떤 과목, 세부 목표, 시작일, 종료일, 달성여부, 선생님 승인여부, 민팅 승인여부) - 학생이 실행
-    function setGoal(string memory _subject, string memory _detail, uint _start, uint _end) public {
-        require(bytes(_detail).length > 0 && _start > 0 && _end > 0, "input value");
-
-        studentsGoals[msg.sender].push(Goal(msg.sender, _subject, _detail, _start, _end, ""));
-    }
-
-    function getStudentsGoals(address _studentAddress) public view returns(Goal[] memory) {
-        return studentsGoals[_studentAddress];
-    }
-
-    // 목표 달성에 대한 자료 제출
-    function submitEvidence(address _teacher, uint _contentsNumber, string memory _url) public {
-        uint tokenId = totalSupply() + 1;
-        
-        require(isTeacher[_teacher], "This address owner is not a Teacher");
-        require(bytes(_url).length > 0, "input value");
-
-        studentsGoals[msg.sender][_contentsNumber - 1].proveUrl = _url;
-        teachers[tokenId] = _teacher;
-    }
-
-    // 메타데이터 보기
-    function tokenURI(uint _tokenId) public override view returns(string memory) {
-        return metadataUris[_tokenId];
-    }
+    // 학생의 목표
+    mapping(uint => Goal) public goals;
 
     // 선생님 설정
     function setTeacher(address _teacher) public onlyOwner {
         isTeacher[_teacher] = !isTeacher[_teacher];
     }
 
-    // 토큰 아이디가 발행이 됐는지 확인을 해야함
-    function mintNFT(address _studentAddress, uint _tokenId, string memory _metadataUri) public {
-        require(msg.sender == teachers[_tokenId], "msg.sender is not my teacher");
-        require(bytes(_metadataUri).length > 0, "input vlaue");
-        
-        metadataUris[_tokenId] = _metadataUri;
-        _mint(_studentAddress, _tokenId);
+    // 민팅 및 초기 목표 설정
+    function mintAndSetGoal(address _teacher, uint64 _start, uint64 _end) public {
+        uint tokenId = totalSupply() + 1;
+
+        require(isTeacher[_teacher], "Account owner is not a teacher");
+
+        _mint(msg.sender, tokenId);
+        metadataUris[tokenId] = string(abi.encodePacked(before_URI, "/", Strings.toString(tokenId), ".json"));
+        teachers[tokenId] = _teacher;
+        goals[tokenId] = Goal(msg.sender, _start, _end, "");
+    }
+
+    // 토큰 정보 보기 ??
+    function getGoalByIndex(uint _tokenId) public view returns(Goal memory) {
+        return goals[_tokenId];
+    }
+
+    // 본인의 전체 목표 조회
+    function getMyGoals() public view returns(Goal[] memory) {
+        uint nftLength = balanceOf(msg.sender);
+        uint[] memory allNfts = new uint[](nftLength);
+
+        for(uint i=0; i<nftLength; i++) {
+            allNfts[i] = tokenOfOwnerByIndex(msg.sender, i);
+        }
+
+        Goal[] memory myGoals = new Goal[](nftLength);
+
+        for(uint j=0; j<nftLength; j++) {
+            myGoals[j] = goals[allNfts[j]];
+        }
+
+        return myGoals;
+    }
+
+    // 목표 달성에 대한 자료 제출
+    function submitEvidence(uint _tokenId, string memory _url) public {
+        require(msg.sender == ownerOf(_tokenId), "Not your goal");
+        require(bytes(_url).length > 0, "input value");
+
+        goals[_tokenId].proveUrl = _url;
+        isSubmmited[_tokenId] = true;
+    }
+
+    // 선생님이 확인 후 메타데이터 변경
+    function changeMetadataUri(uint _tokenId) public {
+        require(msg.sender == teachers[_tokenId], "Msg.sender is not my teacher");
+        require(_tokenId <= totalSupply(), "Not minted yet");
+        require(isSubmmited[_tokenId], "Not submmited evidence yet");
+
+        metadataUris[_tokenId] = string(abi.encodePacked(after_URI, "/", Strings.toString(_tokenId), ".json"));
         isAchieved[_tokenId] = true;
+    }
+
+    // 메타데이터 보기
+    function tokenURI(uint _tokenId) public override view returns(string memory) {
+        return metadataUris[_tokenId];
     }
 
     function renounceOwnership() public override onlyOwner {}

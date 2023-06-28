@@ -45,8 +45,7 @@ contract NFT is ERC721Enumerable, Ownable {
         return allGoals;
     }
 
-
-    function mintNFT(address _teacher, string memory _metadataUri, uint _contentsNumber, string memory _url) public {
+    function mintNFTbyStudent(address _teacher, string memory _metadataUri, uint _contentsNumber, string memory _url) public {
         uint tokenId = totalSupply() + 1;
     
         require(isTeacher[_teacher], "msg.sender is not a Teacher");
